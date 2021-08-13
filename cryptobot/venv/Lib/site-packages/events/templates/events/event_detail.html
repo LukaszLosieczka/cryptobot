@@ -1,0 +1,79 @@
+<ul>
+{% for calendar in calendars %}
+  <li style="display: inline; "><a href="{% url 'events:calendar-events' calendar.slug %}">{{ calendar.name }}</a>{% if not forloop.last %} | {% endif %}</li>
+{% endfor %}
+</ul>
+
+<h2><a href="{% url 'events:calendar-events' event.calendar.slug %}">{{ event.calendar.name }}</a></h2>
+<h3>{{ event.name }}</h3>
+<h4 class="subheader">{{ event.start }} - {{ event.end }}</h4>
+
+{% if event.description %}
+<h4>Description</h4>
+{{ event.description|linebreaks }}
+{% endif %}
+
+{% if event.audience %}
+<h4>Audience</h4>
+{{ event.audience|linebreaks }}
+{% endif %}
+
+{% if event.max_size %}
+<h4>Maximum Attendance</h4>
+<p>{{ event.max_size }}<p>
+{% endif %}
+
+{% if event.location %}
+<h4>Location</h4>
+<h5>{{ event.location.name }}</h5>
+  {% if event.location.address_set or event.location.email_set or event.location.phone_set or event.location.website_set %}
+<ul>
+    {% for address in event.location.address_set.all %}
+  {% if address.address1 %}<li>{{ address.address1 }}</li>{% endif %}
+  {% if address.address2 %}<li>{{ address.address2 }}</li>{% endif %}
+  {% if address.city or address.state or address.zip %}<li>{{ address.city }}, {{ address.state }} {{ address.zip }}</li>{% endif %}
+    {% endfor %}
+
+    {% for email in event.location.email_set.all %}
+  {% if email.address %}<li>{{ email.address }}</li>{% endif %}
+    {% endfor %}
+
+    {% for phone in event.location.phone_set.all %}
+  {% if phone.number %}<li>{{ phone.number }}</li>{% endif %}
+    {% endfor %}
+
+    {% for website in event.location.website_set.all %}
+  {% if website.url %}<li><a href="{{ website.url }}">{{ website.url }}</a></li>{% endif %}
+    {% endfor %}
+</ul>
+  {% endif %}
+{% endif %}
+
+{% if event.contact %}
+<h4>Contact</h4>
+<h5>{{ event.contact.name_first }} {{ event.contact.name_last }}</h5>
+  {% if event.contact.title %}
+<h5 class="subheader">{{ event.contact.title }}</h5>
+  {% endif %}
+  {% if event.contact.address_set or event.contact.email_set or event.contact.phone_set or event.contact.website_set %}
+<ul>
+    {% for address in event.contact.address_set.all %}
+  {% if address.address1 %}<li>{{ address.address1 }}</li>{% endif %}
+  {% if address.address2 %}<li>{{ address.address2 }}</li>{% endif %}
+  {% if address.city or address.state or address.zip %}<li>{{ address.city }}, {{ address.state }} {{ address.zip }}</li>{% endif %}
+    {% endfor %}
+
+    {% for email in event.contact.email_set.all %}
+  {% if email.address %}<li>{{ email.address }}</li>{% endif %}
+    {% endfor %}
+
+    {% for phone in event.contact.phone_set.all %}
+  {% if phone.number %}<li>{{ phone.number }}</li>{% endif %}
+    {% endfor %}
+
+    {% for website in event.contact.website_set.all %}
+  {% if website.url %}<li><a href="{{ website.url }}">{{ website.url }}</a></li>{% endif %}
+    {% endfor %}
+</ul>
+  {% endif %}
+{% endif %}

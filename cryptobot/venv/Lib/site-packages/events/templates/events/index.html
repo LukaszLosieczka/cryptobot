@@ -1,0 +1,6 @@
+<ul>
+{% for calendar in calendars %}
+  <li style="display: inline; "><a href="{% url 'events:calendar-events' calendar.slug %}">{{ calendar.name }}</a>{% if not forloop.last %} | {% endif %}</li>
+{% endfor %}
+</ul>
+

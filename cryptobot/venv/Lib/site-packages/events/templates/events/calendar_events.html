@@ -1,0 +1,27 @@
+<ul>
+{% for calendar in calendars %}
+  <li style="display: inline; "><a href="{% url 'events:calendar-events' calendar.slug %}">{{ calendar.name }}</a>{% if not forloop.last %} | {% endif %}</li>
+{% endfor %}
+</ul>
+
+<h2>{{ calendar.name }}</h2>
+{% if events %}
+  {% for event in events %}
+<h3><a href="{% url 'events:event-detail' event.calendar.slug event.slug %}">{{ event.name }}</a></h3>
+<h4 class="subheader">{{ event.start }} - {{ event.end }}</h4>
+
+    {% if event.location %}
+<h5>Location</h5>
+<h6>{{ event.location.name }}</h6>
+    {% endif %}
+
+    {% if event.contact %}
+<h5>Contact</h5>
+<h6>{{ event.contact.name_first }} {{ event.contact.name_last }}</h6>
+    {% endif %}
+<a href="{% url 'events:event-detail' event.calendar.slug event.slug %}">See more details...</a>
+<hr>
+  {% endfor %}
+{% else %}
+<p>There are no upcoming events scheduled on this calendar.</p>
+{% endif %}
