@@ -1,0 +1,88 @@
+<article>
+  <hgroup>
+    <h2>{{ organization.name }}</h2>
+  </hgroup>
+
+{% if organization.address_set.all or organization.email_set.all or organization.phone_set.all or organization.website_set.all or organization.profile_set.all %}
+  <ul class="organization">
+  {% for address in organization.address_set.all %}
+    {% if address.address1 %}<li class="address1">{{ address.address1 }}</li>{% endif %}
+    {% if address.address2 %}<li class="address2">{{ address.address2 }}</li>{% endif %}
+    {% if address.city or address.state or address.zipcode %}<li class="city">{% if address.city and address.state and address.zipcode %}{{ address.city }}, {{ address.state }} {{ address.zipcode }}{% elif address.city and address.state %}{{ address.city }}, {{ address.state }}{% elif address.state %}{{ address.state }} {{ address.zipcode }}{% elif address.city and address.zipcode %}{{ address.city }}, {{ address.zipcode }}{% elif address.city %}{{ address.city }}{% elif address.zipcode %}{{ address.zipcode }}{% endif %}</li>{% endif %}
+  {% endfor %}
+
+  {% for email in organization.email_set.all %}
+    <li class="email"><a href="mailto:{{ email.address }}">{{ email.address }}</a></li>
+  {% endfor %}
+
+  {% for phone in organization.phone_set.all %}
+    <li class="{% if phone.type == "Work" or phone.type == "Home" %}phone{% elif phone.type == "Mobile" %}mobile{% elif phone.type == "Fax" %}fax{% endif %}">{{ phone.number }}</li>
+  {% endfor %}
+
+  {% for website in organization.website_set.all %}
+    <li class="website"><a href="{{ website.url }}">{{ website.url }}</a></li>
+  {% endfor %}
+
+  {% if organization.profile_set.all %}
+    <li class="social">
+      <ul>
+    {% for profile in organization.profile_set.all %}
+        {% if profile.type == 'Facebook' %}<li class="facebook"><a href="{{ profile.url }}" title="facebook"><i class="icon-facebook-sign icon-2x"></i></a></li>{% endif %}
+        {% if profile.type == 'GooglePlus' %}<li class="plus"><a href="{{ profile.url }}" title="Google+"><i class="icon-google-plus-sign icon-2x"></i></a></li>{% endif %}
+        {% if profile.type == 'Linkedin' %}<li class="linkedin"><a href="{{ profile.url }}" title="Linkedin"><i class="icon-linkedin-sign icon-2x"></i></a></li>{% endif %}
+        {% if profile.type == 'Twitter' %}<li class="twitter"><a href="{{ profile.url }}" title="Twitter"><i class="icon-twitter-sign icon-2x"></i></a></li>{% endif %}
+    {% endfor %}
+      </ul>
+    </li>
+  {% endif %}
+  </ul>
+{% endif %}
+
+{% for person in people %}
+  {% if forloop.counter0|divisibleby:3 or forloop.first %}<div class="row collapse">{% endif %}
+    <div class="small-12 large-4 columns">
+      <ul class="contact">
+        <li class="name">{{ person.name_first }} {{ person.name_last }}</li>
+        {% if person.title %}<li class="title">{{ person.title }}</li>{% endif %}
+
+  {% if person.address_set.all or person.email_set.all or person.phone_set.all or person.website_set.all or person.profile_set.all %}
+    {% for address in person.address_set.all %}
+        {% if address.address1 %}<li class="address1">{{ address.address1 }}</li>{% endif %}
+        {% if address.address2 %}<li class="address2">{{ address.address2 }}</li>{% endif %}
+        {% if address.city or address.state or address.zipcode %}<li class="city">{% if address.city and address.state and address.zipcode %}{{ address.city }}, {{ address.state }} {{ address.zipcode }}{% elif address.city and address.state %}{{ address.city }}, {{ address.state }}{% elif address.state %}{{ address.state }} {{ address.zipcode }}{% elif address.city and address.zipcode %}{{ address.city }}, {{ address.zipcode }}{% elif address.city %}{{ address.city }}{% elif address.zipcode %}{{ address.zipcode }}{% endif %}</li>{% endif %}
+    {% endfor %}
+
+    {% for email in person.email_set.all %}
+        <li class="email"><a href="mailto:{{ email.address }}">{{ email.address }}</a></li>
+    {% endfor %}
+
+    {% for phone in person.phone_set.all %}
+        <li class="{% if phone.type == "Work" or phone.type == "Home" %}phone{% elif phone.type == "Mobile" %}mobile{% elif phone.type == "Fax" %}fax{% endif %}">{{ phone.number }}</li>
+    {% endfor %}
+
+    {% for website in person.website_set.all %}
+        <li class="website"><a href="{{ website.url }}">{{ website.url }}</a></li>
+    {% endfor %}
+
+    {% if person.profile_set.all %}
+        <li class="social">
+          <ul>
+      {% for profile in person.profile_set.all %}
+            {% if profile.type == 'Facebook' %}<li class="facebook"><a href="{{ profile.url }}" title="facebook"><i class="icon-facebook-sign icon-2x"></i></a></li>{% endif %}
+            {% if profile.type == 'GooglePlus' %}<li class="plus"><a href="{{ profile.url }}" title="Google+"><i class="icon-google-plus-sign icon-2x"></i></a></li>{% endif %}
+            {% if profile.type == 'Linkedin' %}<li class="linkedin"><a href="{{ profile.url }}" title="Linkedin"><i class="icon-linkedin-sign icon-2x"></i></a></li>{% endif %}
+            {% if profile.type == 'Twitter' %}<li class="twitter"><a href="{{ profile.url }}" title="Twitter"><i class="icon-twitter-sign icon-2x"></i></a></li>{% endif %}
+      {% endfor %}
+          </ul>
+        </li>
+    {% endif %}
+  {% endif %}
+      </ul>
+    </div>
+  {% if forloop.counter|divisibleby:3 %}
+  </div>
+  {% elif not forloop.counter|divisibleby:3 and forloop.last %}
+  <div class="small-12 large-4 columns">&nbsp;</div></div>
+  {% endif %}
+{% endfor %}
+</article>
