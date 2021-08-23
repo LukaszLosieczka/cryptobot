@@ -63,7 +63,7 @@ def get_order_book(market, depth=25):
     return request_get(url, headers=headers)
 
 
-def create_order(market, direction, quantity, useAwards=False):
+def create_order(market, direction, quantity, use_awards=False):
     order = {
         'marketSymbol': market,
         'direction': direction,
@@ -73,7 +73,7 @@ def create_order(market, direction, quantity, useAwards=False):
         'limit': None,
         'timeInForce': None,
         'clientOrderId': None,
-        'useAwards': useAwards
+        'useAwards': use_awards
     }
     order_json = json.dumps(order)
     url = f'{API_URL}/orders'

@@ -1,7 +1,7 @@
 import bittrex_api
 import json
 import bittrex_websocket
-import threading
+# import threading
 import pandas
 from urllib.request import urlopen
 from urllib.error import URLError
@@ -127,17 +127,18 @@ def internet_on():
 
 def start_bot():
     bittrex_websocket.add_new_channel(market)
+    bittrex_websocket.run()
 
-    t1 = threading.Thread(target=bittrex_websocket.run)
-    t2 = threading.Thread(target=internet_on)
+    # t1 = threading.Thread(target=bittrex_websocket.run)
+    # t2 = threading.Thread(target=internet_on)
 
-    try:
-        t1.start()
-        t2.start()
-    except Exception as err:
-        print('Unexpected error occurred. Rerunning bot...')
-        t1.start()
-        t2.start()
+    # try:
+    # t1.start()
+    # t2.start()
+    # except Exception as err:
+    # print('Unexpected error occurred. Rerunning bot...')
+    # t1.start()
+    # t2.start()
 
 
 if __name__ == '__main__':

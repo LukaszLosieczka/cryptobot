@@ -63,6 +63,7 @@ async def connect():
     HUB = connection.register_hub('c3')
     connection.received += on_message
     connection.error += on_error
+    HUB.client.on('close', on_close)
     connection.start()
     print('Connected')
 
@@ -118,6 +119,13 @@ async def on_message(**msg):
 async def on_error(msg):
     print('Some error occurred...')
     print(msg)
+
+
+async def on_close(msg):
+    print('Connection is closed. Trying to reconnect...')
+    asyncio.create_task(connect())
+    asyncio.create_task(authenticate())
+    asyncio.create_task(subscribe())
 
 
 async def on_heartbeat(msg):
