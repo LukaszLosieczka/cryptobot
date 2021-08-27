@@ -1,27 +1,19 @@
 import bittrex_api
 import json
-import bittrex_websocket
-# import threading
 import pandas
+import global_var
 from urllib.request import urlopen
 from urllib.error import URLError
-import time
 
-RSI_PERIOD = 14
-RSI_OVERBOUGHT = 75
-RSI_OVERSOLD = 25
-
+API = bittrex_api
 QUANTITY = 0.005
-
 BALANCES_FILE = 'balances.json'
 
-market = 'BTC-USD'
 in_position = False
-
-usd_balance = 1000
-btc_balance = 0
-
-balances_history = {'USD': [], 'BTC': []}
+base_currency = ''
+quote_currency = ''
+base_currency_balance = 0
+quote_currency_balance = 0
 
 
 def calculate_rsi(closes_df, period, ema=True):
@@ -42,22 +34,38 @@ def calculate_rsi(closes_df, period, ema=True):
 
 
 def print_balances():
-    print(f'CURRENT USD_BALANCE: {usd_balance} $')
-    balances_history['USD'].append(usd_balance)
-    print(f'CURRENT BTC_BALANCE: {btc_balance} BTC')
-    balances_history['BTC'].append(btc_balance)
+    print(f'CURRENT {quote_currency}_BALANCE: {quote_currency_balance}')
+    print(f'CURRENT {base_currency}_BALANCE: {base_currency_balance}')
+
+
+def save_balances():
+    file = open(BALANCES_FILE, 'w')
+    json.dump({base_currency: base_currency_balance, quote_currency: quote_currency_balance}, file,
+              ensure_ascii=False, indent=2)
+    file.close()
+
+
+def load_balance(currency):
+    global base_currency_balance, quote_currency_balance
+    file = open(BALANCES_FILE, 'r')
+    data = json.load(file)
+    file.close()
+    if currency == base_currency:
+        base_currency_balance = data[base_currency]
+    else:
+        quote_currency_balance = data[quote_currency]
 
 
 def buy():
-    global usd_balance, btc_balance
-    fee = float(bittrex_api.get_trade_fees(market=market)['takerRate'])
-    sell_orders = bittrex_api.get_order_book(market)['ask']
+    global base_currency_balance, quote_currency_balance
+    fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
+    sell_orders = API.get_orderbook(global_var.market)['ask']
     for order in sell_orders:
         cost = float(order['rate']) * QUANTITY
         cost = cost * (1 + fee)
-        if cost <= usd_balance:
-            usd_balance = usd_balance - cost
-            btc_balance = btc_balance + QUANTITY
+        if cost <= quote_currency_balance:
+            quote_currency_balance = quote_currency_balance - cost
+            base_currency_balance = base_currency_balance + QUANTITY
             print(f"BUY RATE: {order['rate']}")
             print(f"COST: {cost} $")
             print(f"{fee}")
@@ -67,15 +75,15 @@ def buy():
 
 
 def sell():
-    global usd_balance, btc_balance
-    fee = float(bittrex_api.get_trade_fees(market=market)['takerRate'])
-    buy_orders = bittrex_api.get_order_book(market)['bid']
+    global base_currency_balance, quote_currency_balance
+    fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
+    buy_orders = API.get_orderbook(global_var.market)['bid']
     for order in buy_orders:
-        if float(order['quantity']) >= btc_balance:
-            income = btc_balance * float(order['rate'])
+        if float(order['quantity']) >= base_currency_balance:
+            income = base_currency_balance * float(order['rate'])
             income = income * (1 - fee)
-            btc_balance = 0
-            usd_balance = usd_balance + income
+            base_currency_balance = 0
+            quote_currency_balance = quote_currency_balance + income
             print(f"SELL RATE: {order['rate']}")
             print(f"INCOME: {income} $")
             print(f"{fee}")
@@ -84,61 +92,92 @@ def sell():
     save_balances()
 
 
-def analyse_markets():
+def analyse_market(closes):
     global in_position
-    # while True:
-    if len(bittrex_websocket.closes['BTC-USD']) > RSI_PERIOD and bittrex_websocket.closes_changed:
-        closes_df = pandas.DataFrame(data={'close': bittrex_websocket.closes['BTC-USD']})
-        rsi = calculate_rsi(closes_df, RSI_PERIOD)
+    if len(closes[global_var.market]) > global_var.rsi_period:
+        closes_df = pandas.DataFrame(data={'close': closes[global_var.market]})
+        rsi = calculate_rsi(closes_df, global_var.rsi_period)
         # print(rsi)
         last_rsi = rsi[len(rsi) - 1]
         print(f'CURRENT RSI IS {last_rsi}')
-        if last_rsi > RSI_OVERBOUGHT:
+        if last_rsi > global_var.rsi_overbought:
             if in_position:
                 print('SELL')
                 sell()
                 in_position = False
             else:
                 print("We don't own any, we can't sell")
-        if last_rsi < RSI_OVERSOLD:
+        if last_rsi < global_var.rsi_oversold:
             if in_position:
                 print("We already own it, we won't buy")
             else:
                 print('BUY')
                 buy()
                 in_position = True
-        bittrex_websocket.closes_changed = False
-
-
-def save_balances():
-    file = open(BALANCES_FILE, 'w')
-    json.dump(balances_history, file, ensure_ascii=False, indent=2)
 
 
 def internet_on():
     try:
-        urlopen('https://google.com', timeout=10)
-        # print('success')
-        time.sleep(60)
-        internet_on()
-    except URLError as err:
-        raise Exception('lost internet connection')
+        urlopen('https://google.com', timeout=100)
+        return True
+    except URLError:
+        return False
+
+
+def check_market(market_symbol):
+    markets = API.get_markets()
+    for m in markets:
+        if m['symbol'] == market_symbol:
+            return True
+    return False
 
 
 def start_bot():
-    bittrex_websocket.add_new_channel(market)
-    bittrex_websocket.run()
+    global base_currency, quote_currency
+    print('------------------ Bittrex Crypto-Bot ------------------\n')
+    while True:
+        global_var.market = input('Please enter market symbol to trade in (e.g. BTC-USD): ')
+        if not check_market(global_var.market):
+            print('Incorrect market symbol')
+            continue
+        else:
+            currencies = global_var.market.split('-')
+            base_currency = currencies[0]
+            load_balance(base_currency)
+            quote_currency = currencies[1]
+            break
+    while True:
+        try:
+            global_var.rsi_period = int(input('Please enter RSI period (e.g. 14): '))
+        except ValueError:
+            continue
+        if global_var.rsi_period < 0:
+            print('Incorrect RSI period')
+            continue
+        else:
+            break
+    while True:
+        try:
+            global_var.rsi_overbought = int(input('Please enter RSI overbought value (e.g. 70): '))
+        except ValueError:
+            continue
+        if global_var.rsi_overbought < 0 or global_var.rsi_overbought > 100:
+            print('Incorrect RSI overbought value')
+            continue
+        else:
+            break
+    while True:
+        try:
+            global_var.rsi_oversold = int(input('Please enter RSI oversold value (e.g. 30): '))
+        except ValueError:
+            continue
+        if global_var.rsi_oversold < 0 or global_var.rsi_oversold > 100:
+            print('Incorrect RSI oversold value')
+            continue
+        else:
+            break
 
-    # t1 = threading.Thread(target=bittrex_websocket.run)
-    # t2 = threading.Thread(target=internet_on)
-
-    # try:
-    # t1.start()
-    # t2.start()
-    # except Exception as err:
-    # print('Unexpected error occurred. Rerunning bot...')
-    # t1.start()
-    # t2.start()
+    load_balance(quote_currency)
 
 
 if __name__ == '__main__':

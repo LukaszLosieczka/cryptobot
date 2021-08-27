@@ -1,14 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-#
-# Last tested 2020/09/24 on Python 3.8.5
-#
-# Note: This file is intended solely for testing purposes and may only be used 
-#   as an example to debug and compare with your code. The 3rd party libraries 
-#   used in this example may not be suitable for your production use cases.
-#   You should always independently verify the security and suitability of any 
-#   3rd party library used in your code.
-
 from signalr_aio import Connection  # https://github.com/slazarov/python-signalr-client
 from base64 import b64decode
 from zlib import decompress, MAX_WBITS
@@ -20,13 +9,12 @@ import time
 import uuid
 import bittrex_api
 import bot
+import global_var
 
 CANDLE_INTERVAL = ['MINUTE_1', 'MINUTE_5', 'HOUR_1', 'DAY_1']
 
 
 URL = 'https://socket-v3.bittrex.com/signalr'
-API_KEY = bittrex_api.API_KEY
-API_SECRET = bittrex_api.API_SECRET
 HUB = None
 LOCK = asyncio.Lock()
 INVOCATION_EVENT = None
@@ -35,8 +23,12 @@ INVOCATION_RESPONSE = None
 
 channels = []
 closes = {'EMPTY': []}
+received_messages = []
 closes_changed = False
 current_candle = None
+last_close = None
+is_subscribed = False
+forever = asyncio.Event()
 
 
 def add_new_channel(market):
@@ -46,15 +38,50 @@ def add_new_channel(market):
         closes[market] = []
 
 
-async def main():
+async def update_lost_candles(min_range):
+    global current_candle, closes_changed, last_close
+    lost_candles = bittrex_api.get_candles(global_var.market)
+    last_index = len(lost_candles) - 1
+    for i in range(min_range, 0, -1):
+        candle = lost_candles[last_index - i]
+        if candle not in received_messages:
+            received_messages.append(candle)
+            closes[global_var.market].append(float(candle['close']))
+            closes_changed = True
+            print(f"LOST CANDLE: {get_time()} closed at {candle['delta']['close']}"
+                  f"{global_var.market.split('-')[1]}")
+            last_close = {'delta': candle}
+    current_candle = {'delta': lost_candles[last_index]}
+
+
+def seconds_to_close():
+    current_second = int(time.strftime('%S', time.gmtime()))
+    return 60 - current_second + 5
+
+
+async def check_update():
+    lost_minutes = 1
+    while True:
+        old_close = last_close
+        await asyncio.sleep(seconds_to_close())
+        # print('checking update')
+        if last_close == old_close:
+            try:
+                await on_close('Lost internet connection')
+                await update_lost_candles(lost_minutes)
+                lost_minutes = 1
+            except OSError:
+                lost_minutes += 1
+
+
+async def start_client():
     await connect()
-    if API_SECRET != '':
+    if global_var.api_secret != '':
         await authenticate()
     else:
         print('Authentication skipped because API key was not provided')
     await subscribe()
-    forever = asyncio.Event()
-    await forever.wait()
+    await check_update()
 
 
 async def connect():
@@ -72,10 +99,10 @@ async def authenticate():
     timestamp = str(int(time.time()) * 1000)
     random_content = str(uuid.uuid4())
     content = timestamp + random_content
-    signed_content = hmac.new(API_SECRET.encode(), content.encode(), hashlib.sha512).hexdigest()
+    signed_content = hmac.new(global_var.api_secret.encode(), content.encode(), hashlib.sha512).hexdigest()
 
     response = await invoke('Authenticate',
-                            API_KEY,
+                            global_var.api_key,
                             timestamp,
                             random_content,
                             signed_content)
@@ -88,6 +115,7 @@ async def authenticate():
 
 
 async def subscribe():
+    global is_subscribed
     HUB.client.on('ticker', on_ticker)
     HUB.client.on('candle', on_candle)
     HUB.client.on('balance', on_balance)
@@ -98,6 +126,18 @@ async def subscribe():
             print('Subscription to "' + channels[i] + '" successful')
         else:
             print('Subscription to "' + channels[i] + '" failed: ' + response[i]['ErrorCode'])
+    is_subscribed = True
+
+
+async def unsubscribe():
+    global is_subscribed
+    response = await invoke('Unsubscribe', channels)
+    for i in range(len(channels)):
+        if response[i]['Success']:
+            print(channels[i] + ' unsubscribed')
+        else:
+            print(channels[i] + ' failed to unsubscribe: ' + response[i]['ErrorCode'])
+    is_subscribed = False
 
 
 async def invoke(method, *args):
@@ -122,10 +162,16 @@ async def on_error(msg):
 
 
 async def on_close(msg):
+    global LOCK
     print('Connection is closed. Trying to reconnect...')
-    asyncio.create_task(connect())
-    asyncio.create_task(authenticate())
-    asyncio.create_task(subscribe())
+    if bot.internet_on():
+        LOCK = asyncio.Lock()
+        asyncio.create_task(connect())
+        asyncio.create_task(authenticate())
+        asyncio.create_task(subscribe())
+    else:
+        print(f'Reconnecting failed. Next attempt in {seconds_to_close()} seconds')
+        raise OSError
 
 
 async def on_heartbeat(msg):
@@ -145,16 +191,40 @@ async def on_candle(msg):
     await analyse_candle(msg)
 
 
+def get_time():
+    t = float(time.strftime('%H.%M', time.localtime()))
+    date = time.strftime('%Y-%m-%d', time.localtime())
+    # t = float('22.01')
+    t -= 0.01
+    t = round(t, 2)
+    hours = str(t).split('.')[0]
+    minutes = str(t).split('.')[1]
+    if minutes == '99':
+        minutes = '59'
+    if hours == '-0':
+        hours = '23'
+        minutes = '59'
+        date = time.strftime('%Y-%m-%d', time.gmtime())
+    if len(hours) == 1:
+        hours = f'0{hours}'
+    if len(minutes) == 1:
+        minutes = f'{minutes}0'
+    return f'{date}, {hours}:{minutes}'
+
+
 async def analyse_candle(msg):
-    global current_candle, closes_changed
+    global current_candle, closes_changed, last_close
     candle = await process_message(msg[0])
-    if current_candle is None:
-        current_candle = candle
-    if current_candle['delta']['startsAt'] != candle['delta']['startsAt']:
+    # print(current_candle)
+    # print(candle)
+    if current_candle['delta']['startsAt'] != candle['delta']['startsAt'] and current_candle not in received_messages:
+        received_messages.append(current_candle)
         closes[candle['marketSymbol']].append(float(current_candle['delta']['close']))
         closes_changed = True
-        bot.analyse_markets()
-        print(f"CLOSED: {current_candle['delta']['startsAt']} {current_candle['delta']['close']}")
+        last_close = current_candle
+        bot.analyse_market(closes)
+        print(f"{get_time()} closed at {current_candle['delta']['close']} "
+              f"{global_var.market.split('-')[1]}")
     current_candle = candle
     # print(candle)
 
@@ -177,9 +247,26 @@ async def process_message(message):
 
 
 def run():
-    asyncio.run(main())
+    global current_candle
+    bot.start_bot()
+    add_new_channel(global_var.market)
+    current_candle = {'delta': bittrex_api.get_last_candle(global_var.market)}
+    asyncio.run(start_client())
 
+
+async def test1():
+    add_new_channel('BTC-USD')
+    await connect()
+    global_var.api_secret = '1c335acf0b8c4cddbd899a751d98455c'
+    global_var.api_key = 'c06a80c7cccb4f65ac5c0c6f08cbc121'
+    await authenticate()
+    await subscribe()
+    time.sleep(5)
+    await unsubscribe()
 
 if __name__ == "__main__":
-    add_new_channel('BTC-USD')
-    run()
+    asyncio.run(test1())
+    print(get_time())
+    # print(seconds_to_close())
+    # add_new_channel('BTC-USD')
+    # run()

@@ -3,12 +3,10 @@ import hashlib
 import hmac
 import json
 import requests
+import global_var
 
 
 API_URL = 'https://api.bittrex.com/v3'
-API_KEY = 'c06a80c7cccb4f65ac5c0c6f08cbc121'
-API_SECRET = '1c335acf0b8c4cddbd899a751d98455c'
-
 ORDER_DIRECTIONS = ['BUY', 'SELL']
 
 
@@ -16,9 +14,9 @@ def authentication_headers(url, request_method, request_body=None):
     time_stamp = str(int(time.time() * 1000))
     content_hash = hashlib.sha512((json.dumps(request_body) if request_body else '').encode()).hexdigest()
     pre_sign = ''.join((time_stamp, url, request_method, content_hash))
-    signature = hmac.new(API_SECRET.encode(), pre_sign.encode(), hashlib.sha512).hexdigest()
+    signature = hmac.new(global_var.api_secret.encode(), pre_sign.encode(), hashlib.sha512).hexdigest()
     return {
-        'Api-Key': API_KEY,
+        'Api-Key': global_var.api_key,
         'Api-Timestamp': time_stamp,
         'Api-Content-Hash': content_hash,
         'Api-Signature': signature
@@ -57,10 +55,25 @@ def get_balances(currency=''):
     return request_get(url, headers=headers)
 
 
-def get_order_book(market, depth=25):
+def get_orderbook(market, depth=25):
     url = f'{API_URL}/markets/{market}/orderbook'
     headers = {'depth': str(depth)}
     return request_get(url, headers=headers)
+
+
+def get_candles(market, candle_interval='MINUTE_1'):
+    url = f'{API_URL}/markets/{market}/candles/{candle_interval}/recent'
+    return request_get(url)
+
+
+def get_last_candle(market, candle_interval='MINUTE_1'):
+    last_candles = get_candles(market, candle_interval=candle_interval)
+    return last_candles[len(last_candles) - 1]
+
+
+def get_markets():
+    url = f'{API_URL}/markets'
+    return request_get(url)
 
 
 def create_order(market, direction, quantity, use_awards=False):
@@ -82,4 +95,6 @@ def create_order(market, direction, quantity, use_awards=False):
 
 
 if __name__ == '__main__':
-    print(get_balances('BTC'))
+    for i in range(9, 5, -1):
+        print(i)
+    # print(get_candles('BTC-USD'))
