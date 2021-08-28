@@ -2,8 +2,6 @@ import bittrex_api
 import json
 import pandas
 import global_var
-from urllib.request import urlopen
-from urllib.error import URLError
 
 API = bittrex_api
 QUANTITY = 0.005
@@ -33,9 +31,18 @@ def calculate_rsi(closes_df, period, ema=True):
     return rsi
 
 
-def print_balances():
-    print(f'CURRENT {quote_currency}_BALANCE: {quote_currency_balance}')
-    print(f'CURRENT {base_currency}_BALANCE: {base_currency_balance}')
+def load_balances():
+    global base_currency_balance, quote_currency_balance
+    # final version
+    # base_currency_balance = bittrex_api.get_balances(currency=base_currency)
+    # quote_currency_balance = bittrex_api.get_balances(currency=quote_currency_balance)
+
+    # test version
+    file = open(BALANCES_FILE, 'r')
+    data = json.load(file)
+    file.close()
+    base_currency_balance = data[base_currency]
+    quote_currency_balance = data[quote_currency]
 
 
 def save_balances():
@@ -45,15 +52,9 @@ def save_balances():
     file.close()
 
 
-def load_balance(currency):
-    global base_currency_balance, quote_currency_balance
-    file = open(BALANCES_FILE, 'r')
-    data = json.load(file)
-    file.close()
-    if currency == base_currency:
-        base_currency_balance = data[base_currency]
-    else:
-        quote_currency_balance = data[quote_currency]
+def print_balances():
+    print(f'CURRENT {quote_currency}_BALANCE: {quote_currency_balance}')
+    print(f'CURRENT {base_currency}_BALANCE: {base_currency_balance}')
 
 
 def buy():
@@ -116,13 +117,6 @@ def analyse_market(closes):
                 in_position = True
 
 
-def internet_on():
-    try:
-        urlopen('https://google.com', timeout=100)
-        return True
-    except URLError:
-        return False
-
 
 def check_market(market_symbol):
     markets = API.get_markets()
@@ -143,7 +137,6 @@ def start_bot():
         else:
             currencies = global_var.market.split('-')
             base_currency = currencies[0]
-            load_balance(base_currency)
             quote_currency = currencies[1]
             break
     while True:
@@ -177,7 +170,7 @@ def start_bot():
         else:
             break
 
-    load_balance(quote_currency)
+    load_balances()
 
 
 if __name__ == '__main__':

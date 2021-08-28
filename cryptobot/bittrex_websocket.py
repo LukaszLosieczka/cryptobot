@@ -1,3 +1,5 @@
+from urllib.request import urlopen
+from urllib.error import URLError
 from signalr_aio import Connection  # https://github.com/slazarov/python-signalr-client
 from base64 import b64decode
 from zlib import decompress, MAX_WBITS
@@ -15,10 +17,11 @@ CANDLE_INTERVAL = ['MINUTE_1', 'MINUTE_5', 'HOUR_1', 'DAY_1']
 
 
 URL = 'https://socket-v3.bittrex.com/signalr'
-HUB = None
+CONNECTION = Connection(URL)
+HUB = CONNECTION.register_hub('c3')
 LOCK = asyncio.Lock()
-INVOCATION_EVENT = None
-INVOCATION_RESPONSE = None
+INVOCATION_EVENT = asyncio.Event()
+INVOCATION_RESPONSE = {}
 
 
 channels = []
@@ -36,6 +39,14 @@ def add_new_channel(market):
     if channel not in channels:
         channels.append(channel)
         closes[market] = []
+
+
+def internet_on():
+    try:
+        urlopen('https://google.com', timeout=100)
+        return True
+    except URLError:
+        return False
 
 
 async def update_lost_candles(min_range):
@@ -85,13 +96,9 @@ async def start_client():
 
 
 async def connect():
-    global HUB
-    connection = Connection(URL)
-    HUB = connection.register_hub('c3')
-    connection.received += on_message
-    connection.error += on_error
-    HUB.client.on('close', on_close)
-    connection.start()
+    CONNECTION.received += on_message
+    CONNECTION.error += on_error
+    CONNECTION.start()
     print('Connected')
 
 
@@ -142,8 +149,6 @@ async def unsubscribe():
 
 async def invoke(method, *args):
     async with LOCK:
-        global INVOCATION_EVENT
-        INVOCATION_EVENT = asyncio.Event()
         HUB.server.invoke(method, *args)
         await INVOCATION_EVENT.wait()
         return INVOCATION_RESPONSE
@@ -164,7 +169,8 @@ async def on_error(msg):
 async def on_close(msg):
     global LOCK
     print('Connection is closed. Trying to reconnect...')
-    if bot.internet_on():
+    received_messages.append(msg)
+    if internet_on():
         LOCK = asyncio.Lock()
         asyncio.create_task(connect())
         asyncio.create_task(authenticate())
@@ -175,11 +181,13 @@ async def on_close(msg):
 
 
 async def on_heartbeat(msg):
+    received_messages.append(msg)
     print('\u2661')
 
 
 async def on_auth_expiring(msg):
     print('Authentication expiring...')
+    received_messages.append(msg)
     asyncio.create_task(authenticate())
 
 
@@ -257,8 +265,8 @@ def run():
 async def test1():
     add_new_channel('BTC-USD')
     await connect()
-    global_var.api_secret = '1c335acf0b8c4cddbd899a751d98455c'
-    global_var.api_key = 'c06a80c7cccb4f65ac5c0c6f08cbc121'
+    global_var.api_secret = ''
+    global_var.api_key = ''
     await authenticate()
     await subscribe()
     time.sleep(5)
