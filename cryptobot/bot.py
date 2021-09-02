@@ -4,14 +4,20 @@ import pandas
 import global_var
 
 API = bittrex_api
-QUANTITY = 0.005
 BALANCES_FILE = 'balances.json'
+UNCOMPLETED_TRADES = 'uncompleted_trades.json'
+OVERSOLD_DIVERGENCE = -20
+OVERBOUGHT_DIVERGENCE = 20
 
 in_position = False
-base_currency = ''
-quote_currency = ''
+quantity = 0.005
+last_close = 0
+last_buy_rate = 0
+base_currency = 'BTC'
+quote_currency = 'USD'
 base_currency_balance = 0
 quote_currency_balance = 0
+uncompleted_trades = {}
 
 
 def calculate_rsi(closes_df, period, ema=True):
@@ -24,15 +30,24 @@ def calculate_rsi(closes_df, period, ema=True):
         ma_down = down.ewm(com=period - 1, adjust=True, min_periods=period).mean()
     else:
         # Use simple moving average
-        ma_up = up.rolling(window=period, adjust=False).mean()
-        ma_down = down.rolling(window=period, adjust=False).mean()
+        ma_up = up.rolling(window=period).mean()
+        ma_down = down.rolling(window=period).mean()
     rsi = ma_up / ma_down
     rsi = 100 - (100 / (1 + rsi))
     return rsi
 
 
+def calculate_macd(closes_df, fast_length=12, slow_length=26, length=9):
+    k = closes_df['close'].ewm(span=fast_length, adjust=False, min_periods=fast_length).mean()
+    d = closes_df['close'].ewm(span=slow_length, adjust=False, min_periods=slow_length).mean()
+    macd = k - d
+    macd_s = macd.ewm(span=length, adjust=False, min_periods=length).mean()
+    macd_h = macd - macd_s
+    return macd_h
+
+
 def load_balances():
-    global base_currency_balance, quote_currency_balance
+    global base_currency_balance, quote_currency_balance, quantity
     # final version
     # base_currency_balance = bittrex_api.get_balances(currency=base_currency)
     # quote_currency_balance = bittrex_api.get_balances(currency=quote_currency_balance)
@@ -44,11 +59,27 @@ def load_balances():
     base_currency_balance = data[base_currency]
     quote_currency_balance = data[quote_currency]
 
+    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
+
+
+def load_trades():
+    global uncompleted_trades
+    file = open(UNCOMPLETED_TRADES, 'r')
+    data = json.load(file)
+    file.close()
+    uncompleted_trades[global_var.market] = data[global_var.market]
+
 
 def save_balances():
     file = open(BALANCES_FILE, 'w')
     json.dump({base_currency: base_currency_balance, quote_currency: quote_currency_balance}, file,
               ensure_ascii=False, indent=2)
+    file.close()
+
+
+def save_trades():
+    file = open(UNCOMPLETED_TRADES, 'w')
+    json.dump(uncompleted_trades, file, ensure_ascii=False, indent=2)
     file.close()
 
 
@@ -58,53 +89,110 @@ def print_balances():
 
 
 def buy():
-    global base_currency_balance, quote_currency_balance
+    global last_buy_rate
+    try:
+        bittrex_api.create_order(global_var.market, bittrex_api.ORDER_DIRECTIONS[0], quantity)
+        last_buy_rate = last_close
+    except Exception as err:
+        print(f'Some error with order occurred: {err}')
+        return False
+    print('Buy order placed successfully')
+    return True
+
+
+def buy_test():
+    global base_currency_balance, quote_currency_balance, last_buy_rate
     fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
     sell_orders = API.get_orderbook(global_var.market)['ask']
     for order in sell_orders:
-        cost = float(order['rate']) * QUANTITY
+        cost = float(order['rate']) * quantity
         cost = cost * (1 + fee)
         if cost <= quote_currency_balance:
             quote_currency_balance = quote_currency_balance - cost
-            base_currency_balance = base_currency_balance + QUANTITY
+            base_currency_balance = base_currency_balance + quantity
             print(f"BUY RATE: {order['rate']}")
             print(f"COST: {cost} $")
             print(f"{fee}")
+            last_buy_rate = order['rate']
             break
     print_balances()
     save_balances()
 
 
+def is_sell_profitable(sell_rate, buy_rate):
+    fee = float(API.get_trade_fees(global_var.market))
+    return (1+fee)/(1-fee) < sell_rate/buy_rate
+
+
 def sell():
+    tmp_quantity = quantity
+    for trade in uncompleted_trades[global_var.market]:
+        if is_sell_profitable(last_close, trade['rate']):
+            tmp_quantity += trade['quantity']
+    if tmp_quantity == 0:
+        return False
+    try:
+        bittrex_api.create_order(global_var.market, bittrex_api.ORDER_DIRECTIONS[1], tmp_quantity)
+    except Exception as err:
+        print(f'Some error with order occurred: {err}')
+        return False
+    print('Sell order placed successfully')
+    return True
+
+
+def sell_test():
+    sell_completed = False
     global base_currency_balance, quote_currency_balance
     fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
     buy_orders = API.get_orderbook(global_var.market)['bid']
+    tmp_quantity = quantity
     for order in buy_orders:
-        if float(order['quantity']) >= base_currency_balance:
-            income = base_currency_balance * float(order['rate'])
+        if float(order['rate']) >= last_close:
+            for trade in uncompleted_trades[global_var.market]:
+                if is_sell_profitable(order['rate'], trade['rate']):
+                    tmp_quantity += trade['quantity']
+            if tmp_quantity == 0:
+                break
+            income = tmp_quantity * float(order['rate'])
             income = income * (1 - fee)
-            base_currency_balance = 0
+            base_currency_balance -= tmp_quantity
             quote_currency_balance = quote_currency_balance + income
             print(f"SELL RATE: {order['rate']}")
             print(f"INCOME: {income} $")
             print(f"{fee}")
+            sell_completed = True
             break
-    print_balances()
-    save_balances()
+    if sell_completed:
+        print_balances()
+        save_balances()
 
 
 def analyse_market(closes):
-    global in_position
+    global in_position, last_close, quantity
+    last_close = closes[global_var.market][len(closes[global_var.market]) - 1]
     if len(closes[global_var.market]) > global_var.rsi_period:
         closes_df = pandas.DataFrame(data={'close': closes[global_var.market]})
         rsi = calculate_rsi(closes_df, global_var.rsi_period)
-        # print(rsi)
+        macd = calculate_macd(closes_df)
         last_rsi = rsi[len(rsi) - 1]
+        last_macd = macd[len(macd) - 1]
         print(f'CURRENT RSI IS {last_rsi}')
         if last_rsi > global_var.rsi_overbought:
             if in_position:
-                print('SELL')
-                sell()
+                if is_sell_profitable(closes[len(closes) - 1], last_buy_rate):
+                    print('SELL')
+                    sell_test()
+                elif len(uncompleted_trades[global_var.market]) > 0:
+                    tmp_quantity = quantity
+                    quantity = 0
+                    print('SELL')
+                    sell_test()
+                    save_trades()
+                    quantity = tmp_quantity
+                else:
+                    uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
+                    print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
+                    save_trades()
                 in_position = False
             else:
                 print("We don't own any, we can't sell")
@@ -113,9 +201,9 @@ def analyse_market(closes):
                 print("We already own it, we won't buy")
             else:
                 print('BUY')
-                buy()
+                buy_test()
                 in_position = True
-
+        print(f'In position: {in_position}\n')
 
 
 def check_market(market_symbol):
@@ -171,7 +259,12 @@ def start_bot():
             break
 
     load_balances()
+    load_trades()
 
 
 if __name__ == '__main__':
-    start_bot()
+    load_balances()
+    print(quantity)
+    closes_t = [47800.140, 47820.140, 47860.140, 47900.140, 47820.140, 47814.140, 47810.140, 47890.140, 47830.120,
+                47820.140, 47803.140, 47851.240, 47830.140, 47900.250, 47890.140]
+    print(calculate_macd(pandas.DataFrame(data={'close': closes_t})))

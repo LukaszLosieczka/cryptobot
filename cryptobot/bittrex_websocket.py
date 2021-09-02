@@ -17,10 +17,9 @@ CANDLE_INTERVAL = ['MINUTE_1', 'MINUTE_5', 'HOUR_1', 'DAY_1']
 
 
 URL = 'https://socket-v3.bittrex.com/signalr'
-CONNECTION = Connection(URL)
-HUB = CONNECTION.register_hub('c3')
+HUB = None
 LOCK = asyncio.Lock()
-INVOCATION_EVENT = asyncio.Event()
+INVOCATION_EVENT = None
 INVOCATION_RESPONSE = {}
 
 
@@ -31,7 +30,6 @@ closes_changed = False
 current_candle = None
 last_close = None
 is_subscribed = False
-forever = asyncio.Event()
 
 
 def add_new_channel(market):
@@ -49,18 +47,19 @@ def internet_on():
         return False
 
 
-async def update_lost_candles(min_range):
+async def update_lost_candles(min_range, minutes_to_miss=0, silent=False):
     global current_candle, closes_changed, last_close
     lost_candles = bittrex_api.get_candles(global_var.market)
     last_index = len(lost_candles) - 1
-    for i in range(min_range, 0, -1):
+    for i in range(min_range, minutes_to_miss, -1):
         candle = lost_candles[last_index - i]
         if candle not in received_messages:
             received_messages.append(candle)
             closes[global_var.market].append(float(candle['close']))
             closes_changed = True
-            print(f"LOST CANDLE: {get_time()} closed at {candle['delta']['close']}"
-                  f"{global_var.market.split('-')[1]}")
+            if not silent:
+                print(f"LOST CANDLE: {get_time(m_ago=i)} closed at {candle['close']} "
+                      f"{global_var.market.split('-')[1]}\n")
             last_close = {'delta': candle}
     current_candle = {'delta': lost_candles[last_index]}
 
@@ -92,13 +91,17 @@ async def start_client():
     else:
         print('Authentication skipped because API key was not provided')
     await subscribe()
+    await update_lost_candles(60, silent=True)
     await check_update()
 
 
 async def connect():
-    CONNECTION.received += on_message
-    CONNECTION.error += on_error
-    CONNECTION.start()
+    global HUB
+    connection = Connection(URL)
+    HUB = connection.register_hub('c3')
+    connection.received += on_message
+    connection.error += on_error
+    connection.start()
     print('Connected')
 
 
@@ -148,7 +151,9 @@ async def unsubscribe():
 
 
 async def invoke(method, *args):
+    global INVOCATION_EVENT
     async with LOCK:
+        INVOCATION_EVENT = asyncio.Event()
         HUB.server.invoke(method, *args)
         await INVOCATION_EVENT.wait()
         return INVOCATION_RESPONSE
@@ -172,9 +177,9 @@ async def on_close(msg):
     received_messages.append(msg)
     if internet_on():
         LOCK = asyncio.Lock()
-        asyncio.create_task(connect())
-        asyncio.create_task(authenticate())
-        asyncio.create_task(subscribe())
+        await connect()
+        await authenticate()
+        await subscribe()
     else:
         print(f'Reconnecting failed. Next attempt in {seconds_to_close()} seconds')
         raise OSError
@@ -199,11 +204,11 @@ async def on_candle(msg):
     await analyse_candle(msg)
 
 
-def get_time():
+def get_time(m_ago=1):
     t = float(time.strftime('%H.%M', time.localtime()))
     date = time.strftime('%Y-%m-%d', time.localtime())
     # t = float('22.01')
-    t -= 0.01
+    t -= (m_ago/100)
     t = round(t, 2)
     hours = str(t).split('.')[0]
     minutes = str(t).split('.')[1]
@@ -229,10 +234,10 @@ async def analyse_candle(msg):
         received_messages.append(current_candle)
         closes[candle['marketSymbol']].append(float(current_candle['delta']['close']))
         closes_changed = True
-        last_close = current_candle
-        bot.analyse_market(closes)
         print(f"{get_time()} closed at {current_candle['delta']['close']} "
               f"{global_var.market.split('-')[1]}")
+        bot.analyse_market(closes)
+        last_close = current_candle
     current_candle = candle
     # print(candle)
 

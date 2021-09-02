@@ -33,7 +33,7 @@ def request_get(url, headers=None):
 
 def request_post(url, headers, data):
     response = requests.post(url, data=data, headers=headers)
-    if response.status_code != 200:
+    if response.status_code != 201:
         return response.json()['code']
     else:
         return response.json()
@@ -76,16 +76,13 @@ def get_markets():
     return request_get(url)
 
 
-def create_order(market, direction, quantity, use_awards=False):
+def create_order(market, direction, quantity, use_awards=True):
     order = {
         'marketSymbol': market,
         'direction': direction,
-        'type': None,
+        'type': 'MARKET',
         'quantity': quantity,
-        'ceiling': None,
-        'limit': None,
-        'timeInForce': None,
-        'clientOrderId': None,
+        'timeInForce': 'FILL_OR_KILL',
         'useAwards': use_awards
     }
     order_json = json.dumps(order)
@@ -95,6 +92,7 @@ def create_order(market, direction, quantity, use_awards=False):
 
 
 if __name__ == '__main__':
+    print(create_order('BTC-USD', 'BTC', 0))
     for i in range(9, 5, -1):
         print(i)
     # print(get_candles('BTC-USD'))

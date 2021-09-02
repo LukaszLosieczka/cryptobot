@@ -20,11 +20,10 @@ def main():
         load_api_keys()
     except IOError:
         print('config file cannot be open')
-    while True:
-        try:
-            bittrex_websocket.run()
-        except Exception as err:
-            print(f'Some error occurred:\n{err}\n')
+    try:
+        bittrex_websocket.run()
+    except Exception as err:
+        print(f'Some error occurred:\n{err}\n')
 
 
 if __name__ == '__main__':
