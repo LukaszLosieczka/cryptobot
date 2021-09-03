@@ -66,7 +66,18 @@ async def update_lost_candles(min_range, minutes_to_miss=0, silent=False):
 
 def seconds_to_close():
     current_second = int(time.strftime('%S', time.gmtime()))
-    return 60 - current_second + 5
+    return 60 - current_second + 10
+
+
+def clear_messages():
+    global closes, received_messages
+    new_messages = []
+    new_closes = []
+    for i in range(60, 0, -1):
+        new_messages.append(received_messages[len(received_messages)-i])
+        new_closes.append(closes[global_var.market][len(closes) - i])
+    closes[global_var.market] = new_closes
+    received_messages = new_messages
 
 
 async def check_update():
@@ -74,6 +85,8 @@ async def check_update():
     while True:
         old_close = last_close
         await asyncio.sleep(seconds_to_close())
+        if len(received_messages) > 1600:
+            clear_messages()
         # print('checking update')
         if last_close == old_close:
             try:
@@ -234,10 +247,10 @@ async def analyse_candle(msg):
         received_messages.append(current_candle)
         closes[candle['marketSymbol']].append(float(current_candle['delta']['close']))
         closes_changed = True
+        last_close = current_candle
         print(f"{get_time()} closed at {current_candle['delta']['close']} "
               f"{global_var.market.split('-')[1]}")
         bot.analyse_market(closes)
-        last_close = current_candle
     current_candle = candle
     # print(candle)
 
