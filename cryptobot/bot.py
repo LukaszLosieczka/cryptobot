@@ -179,21 +179,21 @@ def analyse_market(closes):
         print(f'CURRENT RSI IS {last_rsi}')
         if last_rsi > global_var.rsi_overbought:
             if in_position:
-                if is_sell_profitable(closes[len(closes) - 1], last_buy_rate):
+                if is_sell_profitable(last_close, last_buy_rate):
                     print('SELL')
                     sell_test()
-                elif len(uncompleted_trades[global_var.market]) > 0:
-                    tmp_quantity = quantity
-                    quantity = 0
-                    print('SELL')
-                    sell_test()
-                    save_trades()
-                    quantity = tmp_quantity
                 else:
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
                     save_trades()
                 in_position = False
+            elif len(uncompleted_trades[global_var.market]) > 0:
+                tmp_quantity = quantity
+                quantity = 0
+                print('SELL')
+                sell_test()
+                save_trades()
+                quantity = tmp_quantity
             else:
                 print("We don't own any, we can't sell")
         if last_rsi < global_var.rsi_oversold:
