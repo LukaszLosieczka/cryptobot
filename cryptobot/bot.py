@@ -120,7 +120,7 @@ def buy_test():
 
 
 def is_sell_profitable(sell_rate, buy_rate):
-    fee = float(API.get_trade_fees(global_var.market))
+    fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
     return (1+fee)/(1-fee) < sell_rate/buy_rate
 
 
@@ -265,6 +265,9 @@ def start_bot():
 if __name__ == '__main__':
     load_balances()
     print(quantity)
-    closes_t = [47800.140, 47820.140, 47860.140, 47900.140, 47820.140, 47814.140, 47810.140, 47890.140, 47830.120,
-                47820.140, 47803.140, 47851.240, 47830.140, 47900.250, 47890.140]
-    print(calculate_macd(pandas.DataFrame(data={'close': closes_t})))
+    in_position = True
+    uncompleted_trades['BTC-USD'] = []
+    last_buy_rate = 48200.240
+    closes_t = {'BTC-USD': [47800.140, 47820.140, 47860.140, 47900.140, 47820.140, 47814.140, 47810.140, 47890.140,
+                            47830.120, 47820.140, 47803.140, 47851.240, 47830.140, 47900.250, 49890.140]}
+    analyse_market(closes_t)
