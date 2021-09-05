@@ -1,0 +1,10 @@
+{
+  "transactions": {
+    "BTC-USD": []
+  },
+  "uncompleted_trades": {
+    "BTC-USD": []
+  },
+  "in_position": false,
+  "quantity": 0.0025439
+}

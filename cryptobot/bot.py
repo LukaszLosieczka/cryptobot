@@ -1,3 +1,5 @@
+import time
+
 import bittrex_api
 import json
 import pandas
@@ -5,7 +7,7 @@ import global_var
 
 API = bittrex_api
 BALANCES_FILE = 'balances.json'
-UNCOMPLETED_TRADES = 'uncompleted_trades.json'
+DATA_FILE = 'data_file.json'
 OVERSOLD_DIVERGENCE = -20
 OVERBOUGHT_DIVERGENCE = 20
 
@@ -18,6 +20,7 @@ quote_currency = 'USD'
 base_currency_balance = 0
 quote_currency_balance = 0
 uncompleted_trades = {}
+transactions = {}
 
 
 def calculate_rsi(closes_df, period, ema=True):
@@ -62,14 +65,6 @@ def load_balances():
     quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
 
 
-def load_trades():
-    global uncompleted_trades
-    file = open(UNCOMPLETED_TRADES, 'r')
-    data = json.load(file)
-    file.close()
-    uncompleted_trades[global_var.market] = data[global_var.market]
-
-
 def save_balances():
     file = open(BALANCES_FILE, 'w')
     json.dump({base_currency: base_currency_balance, quote_currency: quote_currency_balance}, file,
@@ -77,10 +72,33 @@ def save_balances():
     file.close()
 
 
-def save_trades():
-    file = open(UNCOMPLETED_TRADES, 'w')
-    json.dump(uncompleted_trades, file, ensure_ascii=False, indent=2)
-    file.close()
+def load_data():
+    global transactions, uncompleted_trades, in_position, quantity
+    try:
+        file = open(DATA_FILE, 'r')
+        data = json.load(file)
+        file.close()
+        transactions[global_var.market] = data['transactions'][global_var.market]
+        uncompleted_trades[global_var.market] = data['uncompleted_trades'][global_var.market]
+        in_position = data['in_position']
+        quantity = data['quantity']
+    except IOError and KeyError:
+        print('Data file is corrupted')
+        transactions[global_var.market] = []
+        uncompleted_trades[global_var.market] = []
+
+
+def save_data():
+    try:
+        file = open(DATA_FILE, 'w')
+        data = {'transactions': transactions,
+                'uncompleted_trades': uncompleted_trades,
+                'in_position': in_position,
+                'quantity': quantity}
+        json.dump(data, file, ensure_ascii=False, indent=2)
+        file.close()
+    except IOError:
+        print('Data file is corrupted')
 
 
 def print_balances():
@@ -89,7 +107,8 @@ def print_balances():
 
 
 def buy():
-    global last_buy_rate
+    global last_buy_rate, quantity
+    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
     try:
         bittrex_api.create_order(global_var.market, bittrex_api.ORDER_DIRECTIONS[0], quantity)
         last_buy_rate = last_close
@@ -97,11 +116,17 @@ def buy():
         print(f'Some error with order occurred: {err}')
         return False
     print('Buy order placed successfully')
+    transaction = {'direction': 'BUY',
+                   'rate': last_close,
+                   'quantity': quantity,
+                   'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
+    transactions[global_var.market].append(transaction)
     return True
 
 
 def buy_test():
-    global base_currency_balance, quote_currency_balance, last_buy_rate
+    global base_currency_balance, quote_currency_balance, last_buy_rate, quantity
+    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
     fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
     sell_orders = API.get_orderbook(global_var.market)['ask']
     for order in sell_orders:
@@ -113,7 +138,12 @@ def buy_test():
             print(f"BUY RATE: {order['rate']}")
             print(f"COST: {cost} $")
             print(f"{fee}")
-            last_buy_rate = order['rate']
+            last_buy_rate = float(order['rate'])
+            transaction = {'direction': 'BUY',
+                           'rate': order["rate"],
+                           'quantity': quantity,
+                           'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
+            transactions[global_var.market].append(transaction)
             break
     print_balances()
     save_balances()
@@ -137,6 +167,11 @@ def sell():
         print(f'Some error with order occurred: {err}')
         return False
     print('Sell order placed successfully')
+    transaction = {'direction': 'SELL',
+                   'rate': last_close,
+                   'quantity': tmp_quantity,
+                   'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
+    transactions[global_var.market].append(transaction)
     return True
 
 
@@ -160,6 +195,11 @@ def sell_test():
             print(f"SELL RATE: {order['rate']}")
             print(f"INCOME: {income} $")
             print(f"{fee}")
+            transaction = {'direction': 'SELL',
+                           'rate': order["rate"],
+                           'quantity': tmp_quantity,
+                           'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
+            transactions[global_var.market].append(transaction)
             sell_completed = True
             break
     if sell_completed:
@@ -185,14 +225,12 @@ def analyse_market(closes):
                 else:
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
-                    save_trades()
                 in_position = False
             elif len(uncompleted_trades[global_var.market]) > 0:
                 tmp_quantity = quantity
                 quantity = 0
                 print('SELL')
                 sell_test()
-                save_trades()
                 quantity = tmp_quantity
             else:
                 print("We don't own any, we can't sell")
@@ -203,6 +241,7 @@ def analyse_market(closes):
                 print('BUY')
                 buy_test()
                 in_position = True
+        save_data()
         print(f'In position: {in_position}\n')
 
 
@@ -259,7 +298,7 @@ def start_bot():
             break
 
     load_balances()
-    load_trades()
+    load_data()
 
 
 if __name__ == '__main__':
@@ -267,7 +306,7 @@ if __name__ == '__main__':
     print(quantity)
     in_position = True
     uncompleted_trades['BTC-USD'] = []
-    last_buy_rate = 48200.240
+    buy_test()
     closes_t = {'BTC-USD': [47800.140, 47820.140, 47860.140, 47900.140, 47820.140, 47814.140, 47810.140, 47890.140,
                             47830.120, 47820.140, 47803.140, 47851.240, 47830.140, 47900.250, 49890.140]}
     analyse_market(closes_t)
