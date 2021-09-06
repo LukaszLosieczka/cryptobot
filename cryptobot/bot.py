@@ -73,7 +73,7 @@ def save_balances():
 
 
 def load_data():
-    global transactions, uncompleted_trades, in_position, quantity
+    global transactions, uncompleted_trades, in_position, quantity, last_buy_rate
     try:
         file = open(DATA_FILE, 'r')
         data = json.load(file)
@@ -82,6 +82,7 @@ def load_data():
         uncompleted_trades[global_var.market] = data['uncompleted_trades'][global_var.market]
         in_position = data['in_position']
         quantity = data['quantity']
+        last_buy_rate = data['last_buy_rate']
     except IOError and KeyError:
         print('Data file is corrupted')
         transactions[global_var.market] = []
@@ -94,7 +95,8 @@ def save_data():
         data = {'transactions': transactions,
                 'uncompleted_trades': uncompleted_trades,
                 'in_position': in_position,
-                'quantity': quantity}
+                'quantity': quantity,
+                'last_buy_rate': last_buy_rate}
         json.dump(data, file, ensure_ascii=False, indent=2)
         file.close()
     except IOError:
@@ -140,7 +142,7 @@ def buy_test():
             print(f"{fee}")
             last_buy_rate = float(order['rate'])
             transaction = {'direction': 'BUY',
-                           'rate': order["rate"],
+                           'rate': float(order["rate"]),
                            'quantity': quantity,
                            'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
             transactions[global_var.market].append(transaction)
@@ -156,11 +158,15 @@ def is_sell_profitable(sell_rate, buy_rate):
 
 def sell():
     tmp_quantity = quantity
+    new_trades = []
     for trade in uncompleted_trades[global_var.market]:
         if is_sell_profitable(last_close, trade['rate']):
             tmp_quantity += trade['quantity']
+        else:
+            new_trades.append(trade)
     if tmp_quantity == 0:
         return False
+    uncompleted_trades[global_var.market] = new_trades
     try:
         bittrex_api.create_order(global_var.market, bittrex_api.ORDER_DIRECTIONS[1], tmp_quantity)
     except Exception as err:
@@ -176,35 +182,34 @@ def sell():
 
 
 def sell_test():
-    sell_completed = False
     global base_currency_balance, quote_currency_balance
     fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
-    buy_orders = API.get_orderbook(global_var.market)['bid']
+    order = API.get_orderbook(global_var.market)['bid'][0]
     tmp_quantity = quantity
-    for order in buy_orders:
-        if float(order['rate']) >= last_close:
-            for trade in uncompleted_trades[global_var.market]:
-                if is_sell_profitable(order['rate'], trade['rate']):
-                    tmp_quantity += trade['quantity']
-            if tmp_quantity == 0:
-                break
-            income = tmp_quantity * float(order['rate'])
-            income = income * (1 - fee)
-            base_currency_balance -= tmp_quantity
-            quote_currency_balance = quote_currency_balance + income
-            print(f"SELL RATE: {order['rate']}")
-            print(f"INCOME: {income} $")
-            print(f"{fee}")
-            transaction = {'direction': 'SELL',
-                           'rate': order["rate"],
-                           'quantity': tmp_quantity,
-                           'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
-            transactions[global_var.market].append(transaction)
-            sell_completed = True
-            break
-    if sell_completed:
-        print_balances()
-        save_balances()
+    new_trades = []
+    for trade in uncompleted_trades[global_var.market]:
+        if is_sell_profitable(float(order['rate']), trade['rate']):
+            tmp_quantity += trade['quantity']
+        else:
+            new_trades.append(trade)
+    if tmp_quantity == 0:
+        print('sell was not successful')
+        return False
+    uncompleted_trades[global_var.market] = new_trades
+    income = tmp_quantity * float(order['rate'])
+    income = income * (1 - fee)
+    base_currency_balance -= tmp_quantity
+    quote_currency_balance = quote_currency_balance + income
+    print(f"SELL RATE: {order['rate']}")
+    print(f"INCOME: {income} $")
+    print(f"{fee}")
+    transaction = {'direction': 'SELL',
+                   'rate': float(order["rate"]),
+                   'quantity': tmp_quantity,
+                   'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
+    transactions[global_var.market].append(transaction)
+    print_balances()
+    save_balances()
 
 
 def analyse_market(closes):
@@ -226,10 +231,10 @@ def analyse_market(closes):
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
                 in_position = False
-            elif len(uncompleted_trades[global_var.market]) > 0:
+            if len(uncompleted_trades[global_var.market]) > 0:
                 tmp_quantity = quantity
                 quantity = 0
-                print('SELL')
+                print('SELL UNCOMPLETED TRADES')
                 sell_test()
                 quantity = tmp_quantity
             else:
@@ -306,7 +311,8 @@ if __name__ == '__main__':
     print(quantity)
     in_position = True
     uncompleted_trades['BTC-USD'] = []
+    transactions['BTC-USD'] = []
     buy_test()
     closes_t = {'BTC-USD': [47800.140, 47820.140, 47860.140, 47900.140, 47820.140, 47814.140, 47810.140, 47890.140,
                             47830.120, 47820.140, 47803.140, 47851.240, 47830.140, 47900.250, 49890.140]}
-    analyse_market(closes_t)
+    sell_test()
