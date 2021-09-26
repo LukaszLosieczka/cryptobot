@@ -12,7 +12,7 @@ ORDER_DIRECTIONS = ['BUY', 'SELL']
 
 def authentication_headers(url, request_method, request_body=None):
     time_stamp = str(int(time.time() * 1000))
-    content_hash = hashlib.sha512((json.dumps(request_body) if request_body else '').encode()).hexdigest()
+    content_hash = hashlib.sha512((request_body if request_body else '').encode()).hexdigest()
     pre_sign = ''.join((time_stamp, url, request_method, content_hash))
     signature = hmac.new(global_var.api_secret.encode(), pre_sign.encode(), hashlib.sha512).hexdigest()
     return {
@@ -31,8 +31,8 @@ def request_get(url, headers=None):
         return response.json()
 
 
-def request_post(url, headers, data):
-    response = requests.post(url, data=data, headers=headers)
+def request_post(url, headers, data=None):
+    response = requests.request(method='POST', url=url, headers=headers, json=data)
     if response.status_code != 201:
         return response.json()['code']
     else:
@@ -76,23 +76,23 @@ def get_markets():
     return request_get(url)
 
 
-def create_order(market, direction, quantity, use_awards=True):
+def create_order(market, direction, quantity):
     order = {
-        'marketSymbol': market,
-        'direction': direction,
-        'type': 'MARKET',
-        'quantity': quantity,
-        'timeInForce': 'FILL_OR_KILL',
-        'useAwards': use_awards
+        "marketSymbol": f"{market}",
+        "direction": f"{direction}",
+        "type": "MARKET",
+        "quantity": f"{quantity}",
+        "timeInForce": "FILL_OR_KILL"
     }
     order_json = json.dumps(order)
     url = f'{API_URL}/orders'
     headers = authentication_headers(url, 'POST', request_body=order_json)
-    return request_post(url, headers, order_json)
+    return request_post(url, headers, data=order)
 
 
 if __name__ == '__main__':
-    print(create_order('BTC-USD', 'BTC', 0))
-    for i in range(9, 5, -1):
-        print(i)
+    print(get_balances())
+    #print(create_order('BTC-USD', 'BTC', 0))
+    #for i in range(9, 5, -1):
+    #    print(i)
     # print(get_candles('BTC-USD'))

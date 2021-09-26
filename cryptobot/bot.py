@@ -1,5 +1,4 @@
 import time
-
 import bittrex_api
 import json
 import pandas
@@ -10,6 +9,7 @@ BALANCES_FILE = 'balances.json'
 DATA_FILE = 'data_file.json'
 OVERSOLD_DIVERGENCE = -20
 OVERBOUGHT_DIVERGENCE = 20
+MINIMUM_TRADE_SIZE = 3.5
 
 in_position = False
 quantity = 0.005
@@ -52,17 +52,16 @@ def calculate_macd(closes_df, fast_length=12, slow_length=26, length=9):
 def load_balances():
     global base_currency_balance, quote_currency_balance, quantity
     # final version
-    # base_currency_balance = bittrex_api.get_balances(currency=base_currency)
-    # quote_currency_balance = bittrex_api.get_balances(currency=quote_currency_balance)
+    base_currency_balance = float(bittrex_api.get_balances(currency=base_currency)['total'])
+    quote_currency_balance = float(bittrex_api.get_balances(currency=quote_currency)['total'])
+    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
 
     # test version
-    file = open(BALANCES_FILE, 'r')
-    data = json.load(file)
-    file.close()
-    base_currency_balance = data[base_currency]
-    quote_currency_balance = data[quote_currency]
-
-    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
+    # file = open(BALANCES_FILE, 'r')
+    # data = json.load(file)
+    # file.close()
+    # base_currency_balance = data[base_currency]
+    # quote_currency_balance = data[quote_currency]
 
 
 def save_balances():
@@ -92,7 +91,8 @@ def load_data():
 def save_data():
     try:
         file = open(DATA_FILE, 'w')
-        data = {'transactions': transactions,
+        data = {'balances': {quote_currency: quote_currency_balance, base_currency: base_currency_balance},
+                'transactions': transactions,
                 'uncompleted_trades': uncompleted_trades,
                 'in_position': in_position,
                 'quantity': quantity,
@@ -110,14 +110,17 @@ def print_balances():
 
 def buy():
     global last_buy_rate, quantity
-    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
+    load_balances()
+    if quantity * last_close < MINIMUM_TRADE_SIZE:
+        print('We don t have enough resource to buy')
+        return False
     try:
-        bittrex_api.create_order(global_var.market, bittrex_api.ORDER_DIRECTIONS[0], quantity)
+        response = API.create_order(global_var.market, API.ORDER_DIRECTIONS[0], quantity)
         last_buy_rate = last_close
     except Exception as err:
         print(f'Some error with order occurred: {err}')
         return False
-    print('Buy order placed successfully')
+    print(f'Buy order placed successfully:\n{response}')
     transaction = {'direction': 'BUY',
                    'rate': last_close,
                    'quantity': quantity,
@@ -129,6 +132,9 @@ def buy():
 def buy_test():
     global base_currency_balance, quote_currency_balance, last_buy_rate, quantity
     quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
+    if quantity == 0:
+        print('We don t have enough resource to buy')
+        return False
     fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
     sell_orders = API.get_orderbook(global_var.market)['ask']
     for order in sell_orders:
@@ -168,11 +174,11 @@ def sell():
         return False
     uncompleted_trades[global_var.market] = new_trades
     try:
-        bittrex_api.create_order(global_var.market, bittrex_api.ORDER_DIRECTIONS[1], tmp_quantity)
+        response = API.create_order(global_var.market, API.ORDER_DIRECTIONS[1], tmp_quantity)
     except Exception as err:
         print(f'Some error with order occurred: {err}')
         return False
-    print('Sell order placed successfully')
+    print(f'Sell order placed successfully:\n{response}')
     transaction = {'direction': 'SELL',
                    'rate': last_close,
                    'quantity': tmp_quantity,
@@ -218,15 +224,15 @@ def analyse_market(closes):
     if len(closes[global_var.market]) > global_var.rsi_period:
         closes_df = pandas.DataFrame(data={'close': closes[global_var.market]})
         rsi = calculate_rsi(closes_df, global_var.rsi_period)
-        macd = calculate_macd(closes_df)
+        # macd = calculate_macd(closes_df)
         last_rsi = rsi[len(rsi) - 1]
-        last_macd = macd[len(macd) - 1]
+        # last_macd = macd[len(macd) - 1]
         print(f'CURRENT RSI IS {last_rsi}')
         if last_rsi > global_var.rsi_overbought:
             if in_position:
                 if is_sell_profitable(last_close, last_buy_rate):
                     print('SELL')
-                    sell_test()
+                    sell()
                 else:
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
@@ -235,16 +241,22 @@ def analyse_market(closes):
                 tmp_quantity = quantity
                 quantity = 0
                 print('SELL UNCOMPLETED TRADES')
-                sell_test()
+                sell()
                 quantity = tmp_quantity
             else:
                 print("We don't own any, we can't sell")
         if last_rsi < global_var.rsi_oversold:
             if in_position:
-                print("We already own it, we won't buy")
+                if last_rsi < 10 and last_close < last_buy_rate:
+                    uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
+                    print(f'Saving last trade to uncompleted trades')
+                    print('BUY')
+                    buy()
+                else:
+                    print("We already own it, we won't buy")
             else:
                 print('BUY')
-                buy_test()
+                buy()
                 in_position = True
         save_data()
         print(f'In position: {in_position}\n')
@@ -262,7 +274,7 @@ def start_bot():
     global base_currency, quote_currency
     print('------------------ Bittrex Crypto-Bot ------------------\n')
     while True:
-        global_var.market = input('Please enter market symbol to trade in (e.g. BTC-USD): ')
+        global_var.market = 'BTC-USD'  # input('Please enter market symbol to trade in (e.g. BTC-USD): ')
         if not check_market(global_var.market):
             print('Incorrect market symbol')
             continue
@@ -273,7 +285,7 @@ def start_bot():
             break
     while True:
         try:
-            global_var.rsi_period = int(input('Please enter RSI period (e.g. 14): '))
+            global_var.rsi_period = 14  # int(input('Please enter RSI period (e.g. 14): '))
         except ValueError:
             continue
         if global_var.rsi_period < 0:
@@ -283,7 +295,7 @@ def start_bot():
             break
     while True:
         try:
-            global_var.rsi_overbought = int(input('Please enter RSI overbought value (e.g. 70): '))
+            global_var.rsi_overbought = 85  # int(input('Please enter RSI overbought value (e.g. 70): '))
         except ValueError:
             continue
         if global_var.rsi_overbought < 0 or global_var.rsi_overbought > 100:
@@ -293,7 +305,7 @@ def start_bot():
             break
     while True:
         try:
-            global_var.rsi_oversold = int(input('Please enter RSI oversold value (e.g. 30): '))
+            global_var.rsi_oversold = 15  # int(input('Please enter RSI oversold value (e.g. 30): '))
         except ValueError:
             continue
         if global_var.rsi_oversold < 0 or global_var.rsi_oversold > 100:
@@ -306,13 +318,27 @@ def start_bot():
     load_data()
 
 
+def bot_test():
+    closes24h = API.get_candles('BTC-USD')
+    closes = []
+    start_bot()
+    for close in closes24h:
+        closes.append(float(close['close']))
+        if len(closes) >= 14:
+            analyse_market({'BTC-USD': closes})
+
+
 if __name__ == '__main__':
+    global_var.market = 'BTC-USD'
     load_balances()
-    print(quantity)
-    in_position = True
+    print(quote_currency_balance)
+    print(base_currency_balance)
+    quantity = 0.00010151
+    last_close = float(API.get_last_candle(global_var.market)['close'])
     uncompleted_trades['BTC-USD'] = []
     transactions['BTC-USD'] = []
-    buy_test()
-    closes_t = {'BTC-USD': [47800.140, 47820.140, 47860.140, 47900.140, 47820.140, 47814.140, 47810.140, 47890.140,
-                            47830.120, 47820.140, 47803.140, 47851.240, 47830.140, 47900.250, 49890.140]}
-    sell_test()
+    last_buy_rate = 43332.79992119
+    if is_sell_profitable(last_close, last_buy_rate):
+        sell()
+    else:
+        print('Not profitable')

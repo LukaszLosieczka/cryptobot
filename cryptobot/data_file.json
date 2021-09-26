@@ -1,10 +1,22 @@
 {
+  "balances": {
+    "USD": 19.75829714,
+    "BTC": 0.00010151
+  },
   "transactions": {
-    "BTC-USD": []
+    "BTC-USD": [
+      {
+        "direction": "BUY",
+        "rate": 43332.79992119,
+        "quantity": 0.00010151,
+        "time": "2021-09-26, 18:17:03"
+      }
+    ]
   },
   "uncompleted_trades": {
     "BTC-USD": []
   },
-  "in_position": false,
-  "quantity": 0.0025439
+  "in_position": true,
+  "quantity": 0.00010151,
+  "last_buy_rate": 43332.79992119
 }

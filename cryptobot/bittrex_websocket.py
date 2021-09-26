@@ -218,19 +218,21 @@ async def on_candle(msg):
 
 
 def get_time(m_ago=1):
+    if m_ago >= 1440:
+        return False
     t = float(time.strftime('%H.%M', time.localtime()))
     date = time.strftime('%Y-%m-%d', time.localtime())
     # t = float('22.01')
-    t -= (m_ago/100)
+    for i in range(m_ago):
+        t -= 0.01
+        if round(t % 1, 2) == 0.99:
+            t -= 0.40
+        if t < 0:
+            t = 23.59
+            date = time.strftime('%Y-%m-%d', time.gmtime())
     t = round(t, 2)
     hours = str(t).split('.')[0]
     minutes = str(t).split('.')[1]
-    if minutes == '99':
-        minutes = '59'
-    if hours == '-0':
-        hours = '23'
-        minutes = '59'
-        date = time.strftime('%Y-%m-%d', time.gmtime())
     if len(hours) == 1:
         hours = f'0{hours}'
     if len(minutes) == 1:
@@ -291,8 +293,8 @@ async def test1():
     await unsubscribe()
 
 if __name__ == "__main__":
-    asyncio.run(test1())
-    print(get_time())
+    # asyncio.run(test1())
+    print(get_time(m_ago=1440))
     # print(seconds_to_close())
     # add_new_channel('BTC-USD')
     # run()
