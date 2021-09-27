@@ -26,7 +26,8 @@ def authentication_headers(url, request_method, request_body=None):
 def request_get(url, headers=None):
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
-        return response.json()['code']
+        print(response.json()['code'])
+        return False
     else:
         return response.json()
 
@@ -34,7 +35,8 @@ def request_get(url, headers=None):
 def request_post(url, headers, data=None):
     response = requests.request(method='POST', url=url, headers=headers, json=data)
     if response.status_code != 201:
-        return response.json()['code']
+        print(response.json()['code'])
+        return False
     else:
         return response.json()
 

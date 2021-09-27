@@ -9,7 +9,7 @@ BALANCES_FILE = 'balances.json'
 DATA_FILE = 'data_file.json'
 OVERSOLD_DIVERGENCE = -20
 OVERBOUGHT_DIVERGENCE = 20
-MINIMUM_TRADE_SIZE = 3.5
+MINIMUM_TRADE_SIZE = 0.0001
 
 in_position = False
 quantity = 0.005
@@ -111,7 +111,7 @@ def print_balances():
 def buy():
     global last_buy_rate, quantity
     load_balances()
-    if quantity * last_close < MINIMUM_TRADE_SIZE:
+    if quantity < MINIMUM_TRADE_SIZE:
         print('We don t have enough resource to buy')
         return False
     try:
@@ -119,6 +119,9 @@ def buy():
         last_buy_rate = last_close
     except Exception as err:
         print(f'Some error with order occurred: {err}')
+        return False
+    if not response:
+        print(f'Some error with order occurred: {response}')
         return False
     print(f'Buy order placed successfully:\n{response}')
     transaction = {'direction': 'BUY',
@@ -171,12 +174,16 @@ def sell():
         else:
             new_trades.append(trade)
     if tmp_quantity == 0:
+        print('Can t sell uncompleted trades')
         return False
     uncompleted_trades[global_var.market] = new_trades
     try:
         response = API.create_order(global_var.market, API.ORDER_DIRECTIONS[1], tmp_quantity)
     except Exception as err:
         print(f'Some error with order occurred: {err}')
+        return False
+    if not response:
+        print(f'Some error with order occurred: {response}')
         return False
     print(f'Sell order placed successfully:\n{response}')
     transaction = {'direction': 'SELL',
