@@ -109,7 +109,7 @@ def print_balances():
 
 
 def buy():
-    global last_buy_rate, quantity
+    global last_buy_rate, quantity, in_position
     load_balances()
     if quantity < MINIMUM_TRADE_SIZE:
         print('We don t have enough resource to buy')
@@ -129,6 +129,7 @@ def buy():
                    'quantity': quantity,
                    'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
     transactions[global_var.market].append(transaction)
+    in_position = True
     return True
 
 
@@ -166,6 +167,7 @@ def is_sell_profitable(sell_rate, buy_rate):
 
 
 def sell():
+    global in_position
     tmp_quantity = quantity
     new_trades = []
     for trade in uncompleted_trades[global_var.market]:
@@ -191,6 +193,7 @@ def sell():
                    'quantity': tmp_quantity,
                    'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
     transactions[global_var.market].append(transaction)
+    in_position = False
     return True
 
 
@@ -243,7 +246,6 @@ def analyse_market(closes):
                 else:
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
-                in_position = False
             if len(uncompleted_trades[global_var.market]) > 0:
                 tmp_quantity = quantity
                 quantity = 0
@@ -264,7 +266,6 @@ def analyse_market(closes):
             else:
                 print('BUY')
                 buy()
-                in_position = True
         save_data()
         print(f'In position: {in_position}\n')
 
