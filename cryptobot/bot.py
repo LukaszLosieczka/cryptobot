@@ -246,6 +246,7 @@ def analyse_market(closes):
                 else:
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
+                    in_position = False
             if len(uncompleted_trades[global_var.market]) > 0:
                 tmp_quantity = quantity
                 quantity = 0
