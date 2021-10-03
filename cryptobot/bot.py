@@ -110,9 +110,11 @@ def print_balances():
 
 def buy():
     global last_buy_rate, quantity, in_position
+    last_quantity = quantity
     load_balances()
     if quantity < MINIMUM_TRADE_SIZE:
         print('We don t have enough resource to buy')
+        quantity = last_quantity
         return False
     try:
         response = API.create_order(global_var.market, API.ORDER_DIRECTIONS[0], quantity)
