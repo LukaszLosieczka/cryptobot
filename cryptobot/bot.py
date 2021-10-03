@@ -247,7 +247,7 @@ def analyse_market(closes):
                     uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
                     print(f'Sell is not profitable. Saving {global_var.market.split("-")[0]} for future tradings')
                     in_position = False
-            if len(uncompleted_trades[global_var.market]) > 0:
+            elif len(uncompleted_trades[global_var.market]) > 0:
                 tmp_quantity = quantity
                 quantity = 0
                 print('SELL UNCOMPLETED TRADES')
@@ -257,11 +257,11 @@ def analyse_market(closes):
                 print("We don't own any, we can't sell")
         if last_rsi < global_var.rsi_oversold:
             if in_position:
-                if last_rsi < 10 and last_close < last_buy_rate:
-                    uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
-                    print(f'Saving last trade to uncompleted trades')
+                if last_rsi < 10 and (last_buy_rate - last_close)/last_buy_rate > 0.025:
                     print('BUY')
-                    buy()
+                    if buy():
+                        uncompleted_trades[global_var.market].append({'quantity': quantity, 'rate': last_buy_rate})
+                        print(f'Saving last trade to uncompleted trades')
                 else:
                     print("We already own it, we won't buy")
             else:
