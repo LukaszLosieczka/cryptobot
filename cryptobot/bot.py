@@ -6,12 +6,14 @@ import global_var
 
 API = bittrex_api
 BALANCES_FILE = 'balances.json'
-DATA_FILE = 'data_file.json'
+DATA_FILE = '/home/lukasz/Desktop/data_file.json'
 OVERSOLD_DIVERGENCE = -20
 OVERBOUGHT_DIVERGENCE = 20
 MINIMUM_TRADE_SIZE = 0.0001
 
+trade_command = None
 in_position = False
+trade_fraction = 0.2
 quantity = 0.005
 last_close = 0
 last_buy_rate = 0
@@ -54,7 +56,7 @@ def load_balances():
     # final version
     base_currency_balance = float(bittrex_api.get_balances(currency=base_currency)['total'])
     quote_currency_balance = float(bittrex_api.get_balances(currency=quote_currency)['total'])
-    quantity = round(quote_currency_balance / float(API.get_last_candle(global_var.market)['close']) * 0.2, 8)
+    quantity = round(quote_currency_balance/float(API.get_last_candle(global_var.market)['close'])*trade_fraction, 8)
 
     # test version
     # file = open(BALANCES_FILE, 'r')
@@ -88,10 +90,26 @@ def load_data():
         uncompleted_trades[global_var.market] = []
 
 
+def load_control_data():
+    global trade_fraction, trade_command
+    try:
+        file = open(DATA_FILE, 'r')
+        data = json.load(file)
+        file.close()
+        trade_fraction = data['trade_fraction']
+        trade_command = data['trade_command']
+    except IOError and KeyError:
+        print('Data file is corrupted')
+        transactions[global_var.market] = []
+        uncompleted_trades[global_var.market] = []
+
+
 def save_data():
     try:
         file = open(DATA_FILE, 'w')
-        data = {'balances': {quote_currency: quote_currency_balance, base_currency: base_currency_balance},
+        data = {'trade_command': trade_command,
+                'trade_fraction': trade_fraction,
+                'balances': {quote_currency: quote_currency_balance, base_currency: base_currency_balance},
                 'transactions': transactions,
                 'uncompleted_trades': uncompleted_trades,
                 'in_position': in_position,
@@ -195,6 +213,7 @@ def sell():
                    'quantity': tmp_quantity,
                    'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
     transactions[global_var.market].append(transaction)
+    load_balances()
     in_position = False
     return True
 
@@ -231,9 +250,14 @@ def sell_test():
 
 
 def analyse_market(closes):
-    global in_position, last_close, quantity
+    global in_position, last_close, quantity, trade_command
     last_close = closes[global_var.market][len(closes[global_var.market]) - 1]
-    if len(closes[global_var.market]) > global_var.rsi_period:
+    load_control_data()
+    if trade_command == 'SELL':
+        sell()
+    elif trade_command == 'BUY':
+        buy()
+    elif len(closes[global_var.market]) > global_var.rsi_period:
         closes_df = pandas.DataFrame(data={'close': closes[global_var.market]})
         rsi = calculate_rsi(closes_df, global_var.rsi_period)
         # macd = calculate_macd(closes_df)
@@ -269,6 +293,7 @@ def analyse_market(closes):
             else:
                 print('BUY')
                 buy()
+        trade_command = None
         save_data()
         print(f'In position: {in_position}\n')
 
@@ -340,16 +365,18 @@ def bot_test():
 
 
 if __name__ == '__main__':
-    global_var.market = 'BTC-USD'
     load_balances()
-    print(quote_currency_balance)
-    print(base_currency_balance)
-    quantity = 0.00010151
-    last_close = float(API.get_last_candle(global_var.market)['close'])
-    uncompleted_trades['BTC-USD'] = []
-    transactions['BTC-USD'] = []
-    last_buy_rate = 43332.79992119
-    if is_sell_profitable(last_close, last_buy_rate):
-        sell()
-    else:
-        print('Not profitable')
+    print(quantity)
+    #global_var.market = 'BTC-USD'
+    #load_balances()
+    #print(quote_currency_balance)
+    #print(base_currency_balance)
+    #quantity = 0.00010151
+    #last_close = float(API.get_last_candle(global_var.market)['close'])
+    #uncompleted_trades['BTC-USD'] = []
+    #transactions['BTC-USD'] = []
+    #last_buy_rate = 43332.79992119
+    #if is_sell_profitable(last_close, last_buy_rate):
+    #    sell()
+    #else:
+    #    print('Not profitable')
