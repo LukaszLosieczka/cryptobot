@@ -13,7 +13,7 @@ MINIMUM_TRADE_SIZE = 0.0001
 
 trade_command = None
 in_position = False
-trade_fraction = 0.2
+trade_fraction = 0.3
 quantity = 0.005
 last_close = 0
 last_buy_rate = 0
@@ -100,8 +100,6 @@ def load_control_data():
         trade_command = data['trade_command']
     except IOError and KeyError:
         print('Data file is corrupted')
-        transactions[global_var.market] = []
-        uncompleted_trades[global_var.market] = []
 
 
 def save_data():
@@ -293,9 +291,9 @@ def analyse_market(closes):
             else:
                 print('BUY')
                 buy()
-        trade_command = None
-        save_data()
-        print(f'In position: {in_position}\n')
+    trade_command = None
+    save_data()
+    print(f'In position: {in_position}\n')
 
 
 def check_market(market_symbol):
@@ -365,8 +363,8 @@ def bot_test():
 
 
 if __name__ == '__main__':
-    load_balances()
-    print(quantity)
+    #load_balances()
+    print(is_sell_profitable(63700.0, 62676.084))
     #global_var.market = 'BTC-USD'
     #load_balances()
     #print(quote_currency_balance)
