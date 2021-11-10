@@ -24,6 +24,8 @@ quote_currency_balance = 0
 uncompleted_trades = {}
 transactions = {}
 
+market_strength = 0
+
 
 def calculate_rsi(closes_df, period, ema=True):
     close_delta = closes_df['close'].diff()
@@ -51,12 +53,14 @@ def calculate_macd(closes_df, fast_length=12, slow_length=26, length=9):
     return macd_h
 
 
-def load_balances():
+def load_balances(update_quantity=True):
     global base_currency_balance, quote_currency_balance, quantity
     # final version
     base_currency_balance = float(bittrex_api.get_balances(currency=base_currency)['total'])
     quote_currency_balance = float(bittrex_api.get_balances(currency=quote_currency)['total'])
-    quantity = round(quote_currency_balance/float(API.get_last_candle(global_var.market)['close'])*trade_fraction, 8)
+    if update_quantity:
+        quantity = round(quote_currency_balance /
+                         float(API.get_last_candle(global_var.market)['close'])*trade_fraction, 8)
 
     # test version
     # file = open(BALANCES_FILE, 'r')
@@ -148,6 +152,7 @@ def buy():
                    'time': time.strftime('%Y-%m-%d, %H:%M:%S', time.localtime())}
     transactions[global_var.market].append(transaction)
     in_position = True
+    load_balances(update_quantity=False)
     return True
 
 
@@ -181,7 +186,7 @@ def buy_test():
 
 def is_sell_profitable(sell_rate, buy_rate):
     fee = float(API.get_trade_fees(market=global_var.market)['takerRate'])
-    return (1+fee)/(1-fee) < sell_rate/buy_rate
+    return (1+fee)/(1-fee) < sell_rate/(buy_rate*1.005)
 
 
 def sell():
@@ -248,7 +253,7 @@ def sell_test():
 
 
 def analyse_market(closes):
-    global in_position, last_close, quantity, trade_command
+    global in_position, last_close, quantity, trade_command, market_strength
     last_close = closes[global_var.market][len(closes[global_var.market]) - 1]
     load_control_data()
     if trade_command == 'SELL':
@@ -258,11 +263,13 @@ def analyse_market(closes):
     elif len(closes[global_var.market]) > global_var.rsi_period:
         closes_df = pandas.DataFrame(data={'close': closes[global_var.market]})
         rsi = calculate_rsi(closes_df, global_var.rsi_period)
-        # macd = calculate_macd(closes_df)
         last_rsi = rsi[len(rsi) - 1]
-        # last_macd = macd[len(macd) - 1]
+        if last_rsi < 50:
+            market_strength = market_strength - 1
+        if last_rsi > 50:
+            market_strength = market_strength + 1
         print(f'CURRENT RSI IS {last_rsi}')
-        if last_rsi > global_var.rsi_overbought:
+        if last_rsi > global_var.rsi_overbought or (last_rsi > 70 and market_strength > 25):
             if in_position:
                 if is_sell_profitable(last_close, last_buy_rate):
                     print('SELL')
@@ -279,7 +286,7 @@ def analyse_market(closes):
                 quantity = tmp_quantity
             else:
                 print("We don't own any, we can't sell")
-        if last_rsi < global_var.rsi_oversold:
+        if last_rsi < global_var.rsi_oversold or (last_rsi < 30 and market_strength < -25):
             if in_position:
                 if last_rsi < 10 and (last_buy_rate - last_close)/last_buy_rate > 0.025:
                     print('BUY')
@@ -294,6 +301,7 @@ def analyse_market(closes):
     trade_command = None
     save_data()
     print(f'In position: {in_position}\n')
+    print(f'Market strength: {market_strength}\n')
 
 
 def check_market(market_symbol):
@@ -329,7 +337,7 @@ def start_bot():
             break
     while True:
         try:
-            global_var.rsi_overbought = 85  # int(input('Please enter RSI overbought value (e.g. 70): '))
+            global_var.rsi_overbought = 90  # int(input('Please enter RSI overbought value (e.g. 70): '))
         except ValueError:
             continue
         if global_var.rsi_overbought < 0 or global_var.rsi_overbought > 100:
@@ -339,7 +347,7 @@ def start_bot():
             break
     while True:
         try:
-            global_var.rsi_oversold = 15  # int(input('Please enter RSI oversold value (e.g. 30): '))
+            global_var.rsi_oversold = 10  # int(input('Please enter RSI oversold value (e.g. 30): '))
         except ValueError:
             continue
         if global_var.rsi_oversold < 0 or global_var.rsi_oversold > 100:
@@ -363,8 +371,8 @@ def bot_test():
 
 
 if __name__ == '__main__':
+    print(is_sell_profitable(68800.0, 67438.084))
     #load_balances()
-    print(is_sell_profitable(63700.0, 62676.084))
     #global_var.market = 'BTC-USD'
     #load_balances()
     #print(quote_currency_balance)
