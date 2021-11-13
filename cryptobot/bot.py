@@ -54,7 +54,6 @@ def calculate_macd(closes_df, fast_length=12, slow_length=26, length=9):
 def calculate_market_strength(rsi):
     market_strength = 0
     for i in range(50):
-        print(i)
         current_rsi = rsi[len(rsi) - i - 1]
         if current_rsi < 50:
             market_strength = market_strength - 1
