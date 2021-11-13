@@ -24,8 +24,6 @@ quote_currency_balance = 0
 uncompleted_trades = {}
 transactions = {}
 
-market_strength = 0
-
 
 def calculate_rsi(closes_df, period, ema=True):
     close_delta = closes_df['close'].diff()
@@ -51,6 +49,18 @@ def calculate_macd(closes_df, fast_length=12, slow_length=26, length=9):
     macd_s = macd.ewm(span=length, adjust=False, min_periods=length).mean()
     macd_h = macd - macd_s
     return macd_h
+
+
+def calculate_market_strength(rsi):
+    market_strength = 0
+    for i in range(50):
+        print(i)
+        current_rsi = rsi[len(rsi) - i - 1]
+        if current_rsi < 50:
+            market_strength = market_strength - 1
+        if current_rsi > 50:
+            market_strength = market_strength + 1
+    return market_strength
 
 
 def load_balances(update_quantity=True):
@@ -253,7 +263,7 @@ def sell_test():
 
 
 def analyse_market(closes):
-    global in_position, last_close, quantity, trade_command, market_strength
+    global in_position, last_close, quantity, trade_command
     last_close = closes[global_var.market][len(closes[global_var.market]) - 1]
     load_control_data()
     if trade_command == 'SELL':
@@ -264,12 +274,10 @@ def analyse_market(closes):
         closes_df = pandas.DataFrame(data={'close': closes[global_var.market]})
         rsi = calculate_rsi(closes_df, global_var.rsi_period)
         last_rsi = rsi[len(rsi) - 1]
-        if last_rsi < 50:
-            market_strength = market_strength - 1
-        if last_rsi > 50:
-            market_strength = market_strength + 1
+        market_strength = calculate_market_strength(rsi)
         print(f'CURRENT RSI IS {last_rsi}')
-        if last_rsi > global_var.rsi_overbought or (last_rsi > 70 and market_strength > 25):
+        print(f'Market strength: {market_strength}')
+        if last_rsi > global_var.rsi_overbought or (last_rsi > 70 and market_strength > 15):
             if in_position:
                 if is_sell_profitable(last_close, last_buy_rate):
                     print('SELL')
@@ -301,7 +309,6 @@ def analyse_market(closes):
     trade_command = None
     save_data()
     print(f'In position: {in_position}\n')
-    print(f'Market strength: {market_strength}\n')
 
 
 def check_market(market_symbol):
