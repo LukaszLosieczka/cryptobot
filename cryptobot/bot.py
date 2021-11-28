@@ -13,7 +13,7 @@ MINIMUM_TRADE_SIZE = 0.0001
 
 trade_command = None
 in_position = False
-trade_fraction = 0.3
+trade_fraction = 0.35
 quantity = 0.005
 last_close = 0
 last_buy_rate = 0
@@ -55,9 +55,9 @@ def calculate_market_strength(rsi):
     market_strength = 0
     for i in range(50):
         current_rsi = rsi[len(rsi) - i - 1]
-        if current_rsi < 50:
+        if current_rsi < 55:
             market_strength = market_strength - 1
-        if current_rsi > 50:
+        if current_rsi > 40:
             market_strength = market_strength + 1
     return market_strength
 
@@ -276,7 +276,7 @@ def analyse_market(closes):
         market_strength = calculate_market_strength(rsi)
         print(f'CURRENT RSI IS {last_rsi}')
         print(f'Market strength: {market_strength}')
-        if last_rsi > global_var.rsi_overbought or (last_rsi > 70 and market_strength > 15):
+        if last_rsi > global_var.rsi_overbought or (last_rsi > 60 and market_strength > 15):
             if in_position:
                 if is_sell_profitable(last_close, last_buy_rate):
                     print('SELL')
@@ -293,7 +293,7 @@ def analyse_market(closes):
                 quantity = tmp_quantity
             else:
                 print("We don't own any, we can't sell")
-        if last_rsi < global_var.rsi_oversold or (last_rsi < 30 and market_strength < -25):
+        if last_rsi < global_var.rsi_oversold or (last_rsi < 25 and market_strength < -35):
             if in_position:
                 if last_rsi < 10 and (last_buy_rate - last_close)/last_buy_rate > 0.025:
                     print('BUY')
@@ -377,7 +377,9 @@ def bot_test():
 
 
 if __name__ == '__main__':
-    print(is_sell_profitable(68800.0, 67438.084))
+    load_balances()
+    print(quantity)
+    #print(is_sell_profitable(68800.0, 67438.084))
     #load_balances()
     #global_var.market = 'BTC-USD'
     #load_balances()
