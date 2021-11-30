@@ -293,7 +293,7 @@ def analyse_market(closes):
                 quantity = tmp_quantity
             else:
                 print("We don't own any, we can't sell")
-        if last_rsi < global_var.rsi_oversold or (last_rsi < 25 and market_strength < -35):
+        if last_rsi < global_var.rsi_oversold or (last_rsi < 25 and market_strength < -25):
             if in_position:
                 if last_rsi < 10 and (last_buy_rate - last_close)/last_buy_rate > 0.025:
                     print('BUY')
