@@ -1,4 +1,5 @@
 cryptobot/config.txt
+cryptobot/global_var.py
 
 Byte-compiled / optimized / DLL files
 __pycache__/
